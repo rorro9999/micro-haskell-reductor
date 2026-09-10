@@ -1,6 +1,13 @@
 module Types where
 
 import Control.Applicative
+import Control.Monad.State
+import qualified Data.Map as Map
+
+-- prints list nicely without parentheses nor commas
+niceShowList :: Show a => String -> String -> [a] -> ShowS
+niceShowList before after =
+ foldr (\x acc -> showString before . showsPrec 9 x . showString after . acc) id
 
 -----------------
 -- Match & Def --
@@ -23,7 +30,8 @@ instance Show Def where
 
 instance Show Match where
   showsPrec _ (Match name pats rhs) =
-    showString name . showsPrec 9 pats . showString " = " . showsPrec 0 rhs
+    showString name . (niceShowList " " "" pats) .
+    showString " = " . showsPrec 0 rhs
 
 ----------------
 -- Expr & Pat --
@@ -38,20 +46,17 @@ data Pat = PVar Name | PApp Name [Pat]
 
 instance Show Expr where
   showsPrec _ e = case e of
-    Var x -> showsPrec 0 x
-    Con x -> showsPrec 0 x
+    Var x -> showString x
+    Con x -> showString x
     (a :$ (b :$ c)) -> showsPrec 0 a . showChar ' ' .
        showParen True (showsPrec 0 b . showChar ' ' . showsPrec 0 c)
     (a :$ b) -> showsPrec 0 a . showChar ' ' . showsPrec 0 b
 
--- PApp binds with arbitrary strength of 5. though i'm not sure what the
--- convention is with passing binds...
 instance Show Pat where
   showsPrec bind p = case p of
-    PVar name -> showsPrec 0 name
-    PApp name [] -> showsPrec 0 name
-    PApp name ps -> showParen (bind >= 5) (showsPrec 0 name . foldr 
-      (\x acc -> showsPrec 5 x . showChar ' ' . acc) id ps)
+    PVar name -> showString name
+    PApp name [] -> showString name
+    PApp name ps -> showParen True (showString name . niceShowList " " "" ps)
 
 ------------
 -- zipper --
@@ -77,6 +82,17 @@ instance Show Zipper where
        | otherwise -> showsPrec 0 el . showChar ' ' . showParen True
          (inject inj zs)
       (ZipR er : zs) -> inject (inj . showChar ' ' . showsPrec 0 er) zs
+
+---------------------
+-- defmap & StateT --
+---------------------
+
+type DefMap = Map.Map Name Def
+
+type TreeS = StateT
+data TS = TS {
+    fuel :: Int
+  , hist :: SnocList Zipper }
 
 --------------
 -- SnocList --
