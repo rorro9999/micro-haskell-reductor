@@ -1,8 +1,3 @@
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE DeriveFoldable #-}
-{-# LANGUAGE DeriveTraversable #-}
--- from hpffp
-
 module Parse
   ( usage
   , parseArgs
@@ -14,7 +9,7 @@ import System.IO
 import Text.Trifecta
 import Control.Applicative
 import Control.Monad.State
-import Types
+import Types hiding (Success)
 -- choice of trifecta was influenced by
 -- chapter 24 of haskell programming from first principle (short: hpffp)
 -- code is heavily inspired by that chapter
@@ -31,24 +26,14 @@ parseArgs args = case args of
   [x] -> readFile x
   _ -> usage
 
-data Error =
-    TrifectaError ErrInfo
-  | MyError String deriving Show
-
--- this is an intermediate representation, between string and pat/expr
-data Nested a =
-   Value a
- | Group [Nested a] deriving (Show, Functor, Foldable, Traversable)
-
 -- string -> lines (without whitespace, comments) -> nested string
 -- -> list of matches -> defs -> check stupid
 -- stuff like has main
 getDefsFromString contents = case parseString stringToLines mempty contents of
   Failure err -> Left (TrifectaError err)
   Success lines -> do
-    matches <- traverse linesToMatch lines
-    defs <- matchesToDefs matches
-    return defs
+    matches <- traverse linesToMatch (reverse lines) -- reverse is because without it, definitions are in reversed order
+    matchesToDefs matches
 
 matchesToDefs :: [Match] -> Either Error [Def]
 matchesToDefs [] = Left (MyError "no matches found in file")

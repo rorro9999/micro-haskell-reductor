@@ -1,0 +1,7 @@
+
+inf = S inf -- to tez jest komentarz
+-- to jest komentarz
+
+add Z n = n
+add (S m) n = S(add m n)
+main = add inf Z
