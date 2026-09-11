@@ -2,7 +2,7 @@ module Types where
 
 -- state imports are made with ai, as documentation is bad
 import Control.Applicative
-import Control.Monad.State.Strict (State, runState, state, execState, put)
+import Control.Monad.State (State, runState, state, execState, get, put)
 import Control.Monad
 import qualified Data.Map as Map
 import Text.Trifecta
@@ -113,15 +113,11 @@ nstToList x = go [] x
 -- TreeS & ReduceResult --
 --------------------------
 
--- used to determine if spine reduced, does not convey recursive meaning
---    :$
---    / \
---  :$   b
---  / \
--- f   a
--- only reduction of f, f a, f a b into new expr should return success.
--- forced reductions inside a or b are not considered Success
--- BUT OutOfFuel is recursive
+-- these datatypes revolve mostly around the spine, caller manages exiting from
+-- spine.
+
+-- used to determine if spine reduced, does not propagate above caller
+-- (except OutOfFuel, which has to be propagated)
 data ReduceResult =
     OutOfFuel
   | Success
@@ -134,8 +130,6 @@ data TS = TS {
   , foc    :: Zipper
   , df     :: DefMap
   }
-
-get = state $ \s -> (s, s)
 
 curExpr s = let Zipper e _ = foc s in e
 curUp s = let Zipper _ snc = foc s in snc
@@ -160,6 +154,75 @@ useFuel = do
   then return OutOfFuel
   else return None
 
+canGoUp s = case curUp s of
+  SnocList (_ : _) -> True
+  _ -> False
+
+canGoRightUp s = case curUp s of
+  SnocList (ZipR _ : _) -> True
+  _ -> False
+
+canGoLeftUp s = case curUp s of
+  SnocList (ZipL _ : _) -> True
+  _ -> False
+
+canGoLeft s = case curExpr s of
+  _ :$ _ -> True
+  _ -> False
+
+canGoRight = canGoLeft
+
+-- check if from a, can reach 1:$ then 2:$
+canGoArgToArg = do
+  s <- get
+  if canGoLeftUp s
+  then do
+    goUp
+    s' <- get
+    goRight -- rewind goLeftUp
+    return (canGoRightUp s')
+  else return False -- can't go a to 1:$
+
+----------------------
+-- movements (safe) --
+----------------------
+
+--    2:$
+--    / \
+--  1:$  b
+--  / \
+-- f   a
+
+-- goes to f
+goLeftMost = do
+  s <- get
+  case curExpr s of
+    _ :$ _ -> do
+      goLeft
+      goLeftMost
+    _ -> return ()
+
+-- goes to 2:$
+goRightMost = do
+  s <- get
+  if canGoRightUp s
+  then goUp >> goRightMost
+  else return ()
+
+--------------------------
+-- movements (NOT SAFE) --
+--------------------------
+
+--    2:$
+--    / \
+--  1:$  b
+--  / \
+-- f   a
+
+goUpN :: Int -> TreeS ()
+goUpN 0 = return ()
+goUpN n = goUp >> goUpN (n-1)
+
 goUp :: TreeS ()
 goUp = state $ \s -> do
   case foc s of
@@ -178,39 +241,13 @@ goLeft = state $ \s -> do
   let (Zipper (l :$ r) snc) = foc s
   ((), s { foc = Zipper l (snc -: ZipR r) } )
 
-goLeftMost = do
-  s <- get
-  case curExpr s of
-    _ :$ _ -> do
-      goLeft
-      goLeftMost
-    _ -> return ()
+-- goes f to a
+goFuncToArg = goUp >> goRight
 
-goRightMost = do
-  s <- get
-  if canGoRightUp s
-  then goUp >> goRightMost
-  else return ()
+-- goes a to b
+goArgToArg = exitSpine >> goUp >> goRight
 
-canGoUp s = case curUp s of
-  SnocList (x:xs) -> True
-  _ -> False
-
-canGoRightUp s = case curUp s of
-  SnocList (ZipR _ : _) -> True
-  _ -> False
-
-canGoLeftUp s = case curUp s of
-  SnocList (ZipL _ : _) -> True
-  _ -> False
-
-canGoLeft s = case curExpr s of
-  _ :$ _ -> True
-  _ -> False
-
-canGoRight = canGoLeft
-
-
+exitSpine = goRightMost >> goUp
 
 --------------
 -- SnocList --

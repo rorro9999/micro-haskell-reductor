@@ -5,8 +5,8 @@ module Compute
 import Types
 import Parse
 import qualified Data.Map as Map
---import Control.Monad.State (State, runState, state, execState, get, put)
-import Control.Monad.State.Strict (State, runState, state, execState, put)
+import Control.Monad.State (State, runState, state, execState, get, put)
+import Control.Monad.Loops (whileM_)
 import System.Exit
 
 buildDefMap defs = do
@@ -56,10 +56,12 @@ printPath' ts = case reduceResult of
   (reduceResult, ts') = runState eval ts
   hst = hist ts'
 
--- eval is the owner of the entire spine, no matter where is it called
+-- all TreeS functions are confined to the spine they are called in.
+-- caller manages entering/exiting spines
+
 -- case for spine owner is roughly: try to reduce function,
 -- if succeeded, call eval again
--- if not, eval leafs
+-- if not, eval args
 -- (doesn't leave spine)
 
 eval :: TreeS ReduceResult
@@ -70,127 +72,145 @@ eval = do
     _ -> do              -- both Var and :$ cases
       res <- tryReduction
       case res of
-        Success -> eval -- keep reducing spine while possible
         OutOfFuel -> return OutOfFuel
+        Success -> eval -- keep reducing spine while possible
         None -> do      -- spine is "dead", so reduce args
-          goLeftMost
           evalRights
+          return None
 
 --     2:$
 --     / \
 --  1:$   b
 --  / \
 -- f   a
+
+liftToState func = do
+  s <- get
+  return (func s)
+
 evalRights = do
+  goLeftMost
   s <- get
   if canGoRightUp s
-  then do   -- spine is not in the final argument
-    goUp    -- either take path f (1:$) a (1:$) evalRight
-    goRight -- or (1:$) (2:$) b (2:$) evalRight
-    res <- eval
-    goUp
-    case res of
-      OutOfFuel -> goRightMost >> return OutOfFuel -- propagate fuel error
-      _ -> evalRights -- reduce rest of args
-  else return None
-
+  then do
+    goFuncToArg -- f to a
+    eval
+    whileM_ canGoArgToArg (goArgToArg >> eval) -- a to b, etc
+    exitSpine -- from b's spine, return to caller's spine
+  else return ()
 
 -- tryReduction tries to reduce the spine.
--- (doesn't leave spine)
+-- each tryMatch should enter current spine, never leave it
 tryReduction = do
   goLeftMost
   s <- get
   case curExpr s of
-   Con _ -> return None
+   Con _ -> return None -- nothing to reduce
    Var v -> do
     case Map.lookup v (df s) of
-     Nothing -> return None
+     Nothing -> return None -- no definition for function
      Just (Def matches) -> do
      -- try tries matches, until first works
-       let try [] = return None
-           try (x:xs) = do
-             res <- tryMatch x
-             case res of
-               None -> try xs
-               y -> return y -- propagates both OutOfFuel and Success cases
-       try matches
+      let try [] = return None
+          try (x:xs) = do
+            res <- tryMatch x
+            case res of
+              None -> try xs
+              y -> return y -- propagates both OutOfFuel and Success cases
+      try matches
 
 
--- (doesn't leave spine)
 tryMatch (Match _ pats expr) = do
   goLeftMost
-  pairs <- matchPatterns False pats
+  pairs <- matchPatsBase False pats
   case pairs of
     Left x -> return x
     Right pairs' -> do
       let substMap = Map.fromList (nstToList pairs')
       res <- useFuel
+
+      -- only capture arguments that were utilized
+      goLeftMost
+      goUpN (length pats)
+
       s <- get
-      writeFoc (foc s) -- matchPatterns leaves with expression in focus
+      writeFoc (foc s)
 
       case res of
         OutOfFuel -> return OutOfFuel
         _ -> do
           replaceExpr $ substitute substMap expr
+          s' <- get
+          writeFoc (foc s')
           return Success
 
---    2:$
---    / \
---  1:$  b
---  / \
--- f   a
--- matchPatterns recursive case is like moving from f to a, or (1:$) to b
--- matchPatterns leaves having focus on the entire substitued expression
--- (doesn't leave spine)
-
+-- must not leave spine
 -- exact is a flag for whether or not number of args/pats in spine is
 -- exactly the number of pats
-matchPatterns :: Bool -> [Pat] -> TreeS (Either ReduceResult (Nested NameExpr))
-matchPatterns exact [] =
-  if exact
-  then do
-    s <- get
-    if canGoRightUp s
-    then return $ Left None -- there are still more args to match
-    else return $ Right (Group [])
-  else return $ Right (Group [])
+-- this (probably) should have been EitherT reduceResult TreeS (Nested NameExpr)
+-- ...
+-- matchPats matches right leaves (like a, b) to given pats
+matchPatsBase :: Bool -> [Pat] -> TreeS (Either ReduceResult (Nested NameExpr))
+-- if no pats, then exact and not exact are good
+matchPatsBase _ [] = return $ Right (Group [])
 
-matchPatterns exact (p:ps) = do
+--     2:$
+--     / \
+--  1:$   b
+--  / \
+-- f   a
+
+matchPatsBase exact pats@(_:_) = do
   s <- get
   if canGoRightUp s
   then do
-    goUp
-    -- the only possible Expr constructor that let's you go up is :$
-    -- which also let's you go to the right
-    goRight
-    res <- matchPat p
-    case res of
-      Left x -> return res
-      Right nst -> do
-        rest <- matchPatterns exact ps
-        case rest of
-          Left _ -> return rest
-          Right rest' -> return $ Right (Group [nst, rest'])
-  else return $ Left None
+    goFuncToArg -- f to a
+    res <- matchPatsRec exact pats
+    exitSpine -- exit b's spine
+    return res
+  else return $ Left None -- has pats to match, but no actual args
 
--- leaving the spine, to return to recursive case in matchPatterns
--- (leaves spine!!!)
+-- recursive version only jumps from a to b etc. caller exits spine of final arg
+matchPatsRec :: Bool -> [Pat] -> TreeS (Either ReduceResult (Nested NameExpr))
+matchPatsRec False [] = return $ Right (Group []) 
+matchPatsRec True [] = do
+  s <- get
+  if canGoRightUp s
+  then return $ Left None
+  else return $ Right (Group [])
+
+matchPatsRec exact (p : ps) = do
+  matchP <- matchPat p
+  case matchP of
+    Left _ -> return matchP
+    Right val -> do
+      hasNextArg <- canGoArgToArg
+      if hasNextArg
+      then do
+        goArgToArg
+        rest <- matchPatsRec exact ps
+        case rest of
+          Left _ -> return $ Left None
+          Right rest' -> return $ Right (Group [rest', val])
+      else case ps of
+        [] -> return matchP     -- job done
+        _ -> return $ Left None -- there is not next argument
+
 matchPat :: Pat -> TreeS (Either ReduceResult (Nested NameExpr))
 matchPat (PVar name) = do
   e <- curExpr <$> get
-  goUp
   return $ Right (Value (name, e))
 
 matchPat p@(PApp name pats) = do
   goLeftMost
-  s <- get
-  case curExpr s of
+  e <- curExpr <$> get
+  case e of
     Con x -> do
       if x == name
-      then matchPatterns True pats -- constructor matches, now need args to match
+      then matchPatsBase True pats -- constructor matches, now need args to match
       else return (Left None)
     Var _ -> do -- try to eval until WHNF
-      res <- eval -- add two two, tutaj jestesmy w 'two'
+      res <- eval
       case res of
         OutOfFuel -> return $ Left OutOfFuel
         _ -> matchPat p -- still on the same spine, so should be fine
