@@ -43,7 +43,7 @@ printPath contents = do
           putStrLn $ niceShowList "" "\n" niceDefs ""
           putStrLn $ show niceDefMap
           putStrLn "------------------------------------------------------------"
-          putStrLn $ printPath' TS { fuel    = 100
+          putStrLn $ printPath' TS { fuel    = 30
                                    , hist    = mempty
                                    , foc     = Zipper (Var "main") mempty
                                    , df      = niceDefMap } ""
@@ -76,7 +76,6 @@ eval = do
         Success -> eval -- keep reducing spine while possible
         None -> do      -- spine is "dead", so reduce args
           evalRights
-          return None
 
 --     2:$
 --     / \
@@ -94,10 +93,11 @@ evalRights = do
   if canGoRightUp s
   then do
     goFuncToArg -- f to a
-    eval
+    ret <- eval
     whileM_ canGoArgToArg (goArgToArg >> eval) -- a to b, etc
     exitSpine -- from b's spine, return to caller's spine
-  else return ()
+    return ret
+  else return None
 
 -- tryReduction tries to reduce the spine.
 -- each tryMatch should enter current spine, never leave it
@@ -190,7 +190,7 @@ matchPatsRec exact (p : ps) = do
         goArgToArg
         rest <- matchPatsRec exact ps
         case rest of
-          Left _ -> return $ Left None
+          Left _ -> return $ rest
           Right rest' -> return $ Right (Group [rest', val])
       else case ps of
         [] -> return matchP     -- job done
@@ -210,7 +210,7 @@ matchPat p@(PApp name pats) = do
       then matchPatsBase True pats -- constructor matches, now need args to match
       else return (Left None)
     Var _ -> do -- try to eval until WHNF
-      res <- eval
+      res <- tryReduction
       case res of
         OutOfFuel -> return $ Left OutOfFuel
         _ -> matchPat p -- still on the same spine, so should be fine
