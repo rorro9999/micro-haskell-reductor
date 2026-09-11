@@ -41,6 +41,7 @@ printPath contents = do
           exitWith (ExitFailure 1)
         Right niceDefs -> do
           putStrLn $ niceShowList "" "\n" niceDefs ""
+          putStrLn $ show niceDefMap
           putStrLn "------------------------------------------------------------"
           putStrLn $ printPath' TS { fuel    = 100
                                    , hist    = mempty
@@ -53,7 +54,7 @@ printPath' ts = case reduceResult of
   _ -> showsPrec 0 hst . showString "\nnothing left to reduce!"
  where
   (reduceResult, ts') = runState eval ts
-  hst = hist ts
+  hst = hist ts'
 
 -- eval is the owner of the entire spine, no matter where is it called
 -- case for spine owner is roughly: try to reduce function,
@@ -67,7 +68,6 @@ eval = do
   case curExpr s of
     Con _ -> return None -- nothing to do
     _ -> do              -- both Var and :$ cases
-      goLeftMost
       res <- tryReduction
       case res of
         Success -> eval -- keep reducing spine while possible
@@ -98,6 +98,7 @@ evalRights = do
 -- tryReduction tries to reduce the spine.
 -- (doesn't leave spine)
 tryReduction = do
+  goLeftMost
   s <- get
   case curExpr s of
    Con _ -> return None
@@ -189,7 +190,7 @@ matchPat p@(PApp name pats) = do
       then matchPatterns True pats -- constructor matches, now need args to match
       else return (Left None)
     Var _ -> do -- try to eval until WHNF
-      res <- eval
+      res <- eval -- add two two, tutaj jestesmy w 'two'
       case res of
         OutOfFuel -> return $ Left OutOfFuel
         _ -> matchPat p -- still on the same spine, so should be fine
