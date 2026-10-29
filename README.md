@@ -23,9 +23,9 @@ Combinators have pattern matching on constructors.
 
 Evaluation of expressions is lazy, starts from main and tries for at most 
 fuel = 30 reductions. Entire history of reductions is printed to stdout. Order
-is left-most, then inner-most.
+is left-most outer-most.
 
-Parser is also written by me, as a challenge :). Getting the parser to work was
-a challenge :).
+Parser is also written from scratch by me, as a challenge :).
+Getting the parser to work was a challenge :).
 
 
