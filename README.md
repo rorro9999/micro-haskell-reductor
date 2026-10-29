@@ -28,4 +28,79 @@ is left-most outer-most.
 Parser is also written from scratch by me, as a challenge :).
 Getting the parser to work was a challenge :).
 
+Running ./run.sh (glorified two echoes and cabal run -- zadanie3 "przyklady/Zadanie3 - przykłady-20260909/addinf.uhs")
+yields this
 
+```
+$ ./run.sh
+usage case
+example file with comments
+inf = S inf
+add Z n = n
+add (S m) n = S (add m n)
+main = add inf Z
+
+fromList [("add",add Z n = n
+add (S m) n = S (add m n)),("inf",inf = S inf),("main",main = add inf Z)]
+------------------------------------------------------------
+{main}
+{add inf Z}
+add {inf} Z
+add {S inf} Z
+{add (S inf) Z}
+{S (add inf Z)}
+S (add {inf} Z)
+S (add {S inf} Z)
+S {add (S inf) Z}
+S {S (add inf Z)}
+S (S (add {inf} Z))
+S (S (add {S inf} Z))
+S (S {add (S inf) Z})
+S (S {S (add inf Z)})
+S (S (S (add {inf} Z)))
+S (S (S (add {S inf} Z)))
+S (S (S {add (S inf) Z}))
+S (S (S {S (add inf Z)}))
+S (S (S (S (add {inf} Z))))
+S (S (S (S (add {S inf} Z))))
+S (S (S (S {add (S inf) Z})))
+S (S (S (S {S (add inf Z)})))
+S (S (S (S (S (add {inf} Z)))))
+S (S (S (S (S (add {S inf} Z)))))
+S (S (S (S (S {add (S inf) Z}))))
+S (S (S (S (S {S (add inf Z)}))))
+S (S (S (S (S (S (add {inf} Z))))))
+S (S (S (S (S (S (add {S inf} Z))))))
+S (S (S (S (S (S {add (S inf) Z})))))
+S (S (S (S (S (S {S (add inf Z)})))))
+S (S (S (S (S (S (S (add {inf} Z)))))))
+S (S (S (S (S (S (S (add {S inf} Z)))))))
+S (S (S (S (S (S (S {add (S inf) Z}))))))
+S (S (S (S (S (S (S {S (add inf Z)}))))))
+S (S (S (S (S (S (S (S (add {inf} Z))))))))
+S (S (S (S (S (S (S (S (add {S inf} Z))))))))
+S (S (S (S (S (S (S (S {add (S inf) Z})))))))
+S (S (S (S (S (S (S (S {S (add inf Z)})))))))
+S (S (S (S (S (S (S (S (S (add {inf} Z)))))))))
+S (S (S (S (S (S (S (S (S (add {S inf} Z)))))))))
+S (S (S (S (S (S (S (S (S {add (S inf) Z}))))))))
+S (S (S (S (S (S (S (S (S {S (add inf Z)}))))))))
+S (S (S (S (S (S (S (S (S (S (add {inf} Z))))))))))
+S (S (S (S (S (S (S (S (S (S (add {S inf} Z))))))))))
+S (S (S (S (S (S (S (S (S (S {add (S inf) Z})))))))))
+S (S (S (S (S (S (S (S (S (S {S (add inf Z)})))))))))
+S (S (S (S (S (S (S (S (S (S (S (add {inf} Z)))))))))))
+S (S (S (S (S (S (S (S (S (S (S (add {S inf} Z)))))))))))
+S (S (S (S (S (S (S (S (S (S (S {add (S inf) Z}))))))))))
+S (S (S (S (S (S (S (S (S (S (S {S (add inf Z)}))))))))))
+S (S (S (S (S (S (S (S (S (S (S (S (add {inf} Z))))))))))))
+S (S (S (S (S (S (S (S (S (S (S (S (add {S inf} Z))))))))))))
+S (S (S (S (S (S (S (S (S (S (S (S {add (S inf) Z})))))))))))
+S (S (S (S (S (S (S (S (S (S (S (S {S (add inf Z)})))))))))))
+S (S (S (S (S (S (S (S (S (S (S (S (S (add {inf} Z)))))))))))))
+S (S (S (S (S (S (S (S (S (S (S (S (S (add {S inf} Z)))))))))))))
+S (S (S (S (S (S (S (S (S (S (S (S (S {add (S inf) Z}))))))))))))
+S (S (S (S (S (S (S (S (S (S (S (S (S {S (add inf Z)}))))))))))))
+S (S (S (S (S (S (S (S (S (S (S (S (S (S (add {inf} Z))))))))))))))
+run out of fuel!
+```
